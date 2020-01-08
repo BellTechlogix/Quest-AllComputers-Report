@@ -5,13 +5,32 @@
 	Modified On - 08 Jan 2020
 
 	This Script Requires that the Quest_ActiveRolesManagementShellforActiveDirectory be installed https://www.powershelladmin.com/wiki/Quest_ActiveRoles_Management_Shell_Download
-	Pulls a report of all non-server workstations that have logged in within 45days
+	Pulls a report of all Systems in an Active Directory Structure as defined by Domain Root
 #>
 
 
 add-pssnapin quest.activeroles.admanagement
 Import-Module activedirectory
 
+#Organization that the report is for
+$org = "MyCompany"
+
+#modify this for your searchroot can be as broad or as narrow as you need down to OU
+$domainRoot = "dc=mydomain,dc=com"
+
+#folder to store completed reports
+$rptfolder = "c:\reports\"
+
+#mail recipients for sending report
+$recipients = @("BTL SCCM <sccm@belltechlogix.com>","BTL ITAMS <ITAM@belltechlogix.com>")
+
+#from address
+$from = "ADReports@wherever.com"
+
+#smtpserver
+$smtp = "mail.wherever.com"
+
+#Timestamp
 $runtime = Get-Date -Format "yyyyMMMdd"
 
 #deffinition for UAC codes
@@ -21,13 +40,12 @@ $lookup = @{4096="Workstation/Server"; 4098="Disabled Workstation/Server"; 4128=
 66178="Disabled Workstation/Server PWD not Expire";512="User Account";514="Disabled User Account";66048="User Account PWD Not Expire";66050="Disabled User Account PWD Not Expire"}
 
 
-$qadcomputers = Get-QADComputer -searchroot "dc=crowley,dc=com" -searchscope subtree -sizelimit 0 -includedproperties name,userAccountControl,whenCreated,whenChanged,lastlogondate,dayssincelogon,lastlogontimestamp,description,operatingSystem,operatingsystemservicepack|Select-Object -Property name,lastlogontimestamp,@{N='dayssincelogon';E={(new-timespan -start (get-date $_.LastLogonTimestamp -Hour "00" -Minute "00") -End (get-date -Hour "00" -Minute "00")).Days}},@{N='userAccountControl';E={$lookup[$_.userAccountControl]}},whenCreated,whenChanged,description,operatingSystem,operatingSystemVersion,operatingsystemservicepack|sort name
+$qadcomputers = Get-QADComputer -searchroot $domainRoot -searchscope subtree -sizelimit 0 -includedproperties name,userAccountControl,whenCreated,whenChanged,lastlogondate,dayssincelogon,lastlogontimestamp,description,operatingSystem,operatingsystemservicepack|Select-Object -Property name,lastlogontimestamp,@{N='dayssincelogon';E={(new-timespan -start (get-date $_.LastLogonTimestamp -Hour "00" -Minute "00") -End (get-date -Hour "00" -Minute "00")).Days}},@{N='userAccountControl';E={$lookup[$_.userAccountControl]}},whenCreated,whenChanged,description,operatingSystem,operatingSystemVersion,operatingsystemservicepack|sort name
 
-$qadcomputers|export-csv C:\Belltech\$runtime-qAD-AllComputerReport.csv -NoTypeInformation
+$qadcomputers|export-csv $rptfolder$runtime-qAD-AllComputerReport.csv -NoTypeInformation
 
-$emailBody = "<h1>Crowley Weekly All Workstations Report</h1>"
+$emailBody = "<h1>$org Weekly All Workstations Report</h1>"
 $emailBody = $emailBody + "<p><em>"+(Get-Date -Format 'MMM dd yyyy HH:mm')+"</em></p>"
-#$emailBody = $emailBody + '<h2><img style="font-size: 14px;" src="https://html-online.com/img/6-table-div-html.png" alt="html table div" width="45" /></h2>'
 
 $htmlforEmail = $emailBody + @'
 <h2>Included Fields:</h2>
@@ -77,10 +95,4 @@ $htmlforEmail = $emailBody + @'
 </table>
 '@
 
-$recipients = @("<WorkstationDataReporting@crowley.com>","Chris <cavery@belltechlogix.com>","Kristopher <kroy@belltechlogix.com>","Jason <jcooper1@belltechlogix.com>","Veneita <vwillis@belltechlogix.com>","Audrey <amatlala@belltechlogix.com>","Tim <twheeler@belltechlogix.com>","Jay <jhardcastle@belltechlogix.com>","Jay <Melvin.Davis@crowley.com>","James <James.Hudgens@crowley.com>")
-
-#$recipients = "Jason <jcooper1@belltechlogix.com>"
-Send-MailMessage -from ADReportsKRoy@crowley.com -to $recipients -subject "Crowley All Workstations Report" -smtpserver mail.crowley.com -BodyAsHtml $htmlforEmail -Attachments C:\Belltech\$runtime-qAD-AllComputerReport.csv
-
-
-#Get-QADComputer -searchroot "dc=crowley,dc=com" -searchscope subtree -sizelimit 0 -includedproperties name,userAccountControl,whenCreated,whenChanged,lastlogondate,dayssincelogon,lastlogontimestamp,description,operatingSystem,operatingsystemservicepack|Select-Object -Property name,lastlogontimestamp,@{N='dayssincelogon';E={(new-timespan -start (get-date $_.LastLogonTimestamp -Hour "00" -Minute "00") -End (get-date -Hour "00" -Minute "00")).Days}},@{N='userAccountControl';E={$lookup[$_.userAccountControl]}},whenCreated,whenChanged,description,operatingSystem,operatingSystemVersion,operatingsystemservicepack|where{$_.operatingSystem -notlike "*server*"}|where{$_.dayssincelogon -le 45 -and $_.lastlogontimestamp -ne $null}|export-csv C:\belltech\07Nov18-WorkstationReport.csv
+Send-MailMessage -from $from -to $recipients -subject "$org All Workstations Report" -smtpserver $smtp -BodyAsHtml $htmlforEmail -Attachments $rptfolder$runtime-qAD-AllComputerReport.csv
